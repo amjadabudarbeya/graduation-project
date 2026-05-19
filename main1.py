@@ -45,7 +45,7 @@ if not os.path.exists(DOG_MODEL_PATH):
     gdown.download(
         url="https://drive.google.com/file/d/15s4lneWlkWg_Acf2NE5szuIZkBXnR3bl/view?usp=drive_link",
         output=DOG_MODEL_PATH,
-        quiet=False
+        quiet=False,
         fuzzy=True
     )
 
@@ -60,7 +60,7 @@ if not os.path.exists(CAT_MODEL_PATH):
     gdown.download(
         url="https://drive.google.com/file/d/1IauPJI2NbPSwlQ2giJO3z3nqtHI33ifh/view?usp=sharing",
         output=CAT_MODEL_PATH,
-        quiet=False
+        quiet=False,
         fuzzy=True
     )
 
