@@ -68,10 +68,27 @@ if not os.path.exists(CAT_MODEL_PATH):
 # LOAD MODELS
 # =========================================
 
-dog_model = tf.keras.models.load_model(DOG_MODEL_PATH)
-cat_model = tf.keras.models.load_model(CAT_MODEL_PATH)
-# YOLO animal detector
-yolo_model = YOLO("yolov8n.pt")
+dog_model = None
+cat_model = None
+yolo_model = None
+
+def get_dog_model():
+    global dog_model
+    if dog_model is None:
+        dog_model = tf.keras.models.load_model(DOG_MODEL_PATH)
+    return dog_model
+
+def get_cat_model():
+    global cat_model
+    if cat_model is None:
+        cat_model = tf.keras.models.load_model(CAT_MODEL_PATH)
+    return cat_model
+
+def get_yolo_model():
+    global yolo_model
+    if yolo_model is None:
+        yolo_model = YOLO("yolov8n.pt")
+    return yolo_model
 
 # =========================
 # YOLO DETECTION
@@ -79,7 +96,8 @@ yolo_model = YOLO("yolov8n.pt")
 
 def detect_animal_yolo(file_bytes):
     img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-    results = yolo_model(img, verbose=False)
+   model = get_yolo_model()
+   results = model(img, verbose=False)
 
     detected = []
 
@@ -87,7 +105,7 @@ def detect_animal_yolo(file_bytes):
         for box in r.boxes:
             cls_id = int(box.cls[0])
             conf = float(box.conf[0])
-            name = yolo_model.names[cls_id]
+            name = model.names[cls_id]
 
             if name in ["dog", "cat"]:
                 detected.append({
@@ -435,7 +453,7 @@ async def analyze_image(
     img_array = prepare_image(file_bytes)
 
     if animal == "dog":
-        prediction = dog_model.predict(img_array)[0]
+        prediction = get_dog_model().predict(img_array)[0]
 
         pred_index = int(np.argmax(prediction))
         emotion = dog_class_labels[pred_index]
@@ -456,8 +474,8 @@ async def analyze_image(
         }
 
     if animal == "cat":
-        prediction = cat_model.predict(img_array)[0]
-
+        prediction = get_cat_model().predict(img_array)[0]
+        
         emotion, confidence, adjusted_prediction = apply_cat_behavior_rules(
             prediction,
             cat_class_labels
