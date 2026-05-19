@@ -96,8 +96,9 @@ def get_yolo_model():
 
 def detect_animal_yolo(file_bytes):
     img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-   model = get_yolo_model()
-   results = model(img, verbose=False)
+
+    model = get_yolo_model()
+    results = model(img, verbose=False)
 
     detected = []
 
@@ -105,6 +106,7 @@ def detect_animal_yolo(file_bytes):
         for box in r.boxes:
             cls_id = int(box.cls[0])
             conf = float(box.conf[0])
+
             name = model.names[cls_id]
 
             if name in ["dog", "cat"]:
@@ -116,7 +118,12 @@ def detect_animal_yolo(file_bytes):
     if not detected:
         return None
 
-    detected = sorted(detected, key=lambda x: x["confidence"], reverse=True)
+    detected = sorted(
+        detected,
+        key=lambda x: x["confidence"],
+        reverse=True
+    )
+
     return detected[0]
 
 
