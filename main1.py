@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
-
+from ultralytics import YOLO
 # =========================================
 # FASTAPI
 # =========================================
@@ -46,6 +46,7 @@ if not os.path.exists(DOG_MODEL_PATH):
         url="https://drive.google.com/file/d/15s4lneWlkWg_Acf2NE5szuIZkBXnR3bl/view?usp=drive_link",
         output=DOG_MODEL_PATH,
         quiet=False
+        fuzzy=True
     )
 
 # =========================================
@@ -60,6 +61,7 @@ if not os.path.exists(CAT_MODEL_PATH):
         url="https://drive.google.com/file/d/1IauPJI2NbPSwlQ2giJO3z3nqtHI33ifh/view?usp=sharing",
         output=CAT_MODEL_PATH,
         quiet=False
+        fuzzy=True
     )
 
 # =========================================
@@ -68,6 +70,37 @@ if not os.path.exists(CAT_MODEL_PATH):
 
 dog_model = tf.keras.models.load_model(DOG_MODEL_PATH)
 cat_model = tf.keras.models.load_model(CAT_MODEL_PATH)
+# YOLO animal detector
+yolo_model = YOLO("yolov8n.pt")
+
+# =========================
+# YOLO DETECTION
+# =========================
+
+def detect_animal_yolo(file_bytes):
+    img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+    results = yolo_model(img, verbose=False)
+
+    detected = []
+
+    for r in results:
+        for box in r.boxes:
+            cls_id = int(box.cls[0])
+            conf = float(box.conf[0])
+            name = yolo_model.names[cls_id]
+
+            if name in ["dog", "cat"]:
+                detected.append({
+                    "animal": name,
+                    "confidence": conf
+                })
+
+    if not detected:
+        return None
+
+    detected = sorted(detected, key=lambda x: x["confidence"], reverse=True)
+    return detected[0]
+
 
 # =========================================
 # CLASS LABELS
@@ -242,39 +275,33 @@ dog_tips = {
 dog_youtube_queries_ar = {
 
     "angry": [
-        "كيفية تهدئة كلب غاضب",
-        "علاج عدوانية الكلاب",
-        "علامات غضب الكلاب",
-        "كيف أتعامل مع كلب عصبي",
-        "لغة جسد الكلاب الغاضبة",
-        "لماذا يصبح الكلب عدواني"
+        "السلوك العدواني للكلاب والهيبره وكيفيه علاجها",
+        "افهم لغة جسد الكلاب في الحالات المزاجية مثل متى يكون سعيد او خايف او قلق ومتوتر او غضبان",
+        "١٠ تصرفات تغضب الكلاب منك / الجزء الأول",
+        "لحظة هجوم الكلاب علي أصحابها وما هي الاسباب | ثلاث أسباب لهجوم الكلاب وكيفية تجنبها",
+        "اذا فعلت هذا الخطأ كلبك يعضك بهجوم شرس وخطير"
     ],
 
     "happy": [
-        "علامات سعادة الكلاب",
-        "كيف أجعل كلبي سعيد",
-        "سلوك الكلاب السعيدة",
-        "طرق اللعب مع الكلاب",
-        "كيف تعرف أن كلبك سعيد",
-        "تحفيز الكلاب وتحسين مزاجها"
+        "علامات سعادة كلبك: تعرف عليها الآن",
+        "10 Signs Your Dog Is Truly Happy and Healthy – #7 Will Surprise You!",
+        "طريقة اللعب الصحيحه مع كلبك في البيت 🐶",
+        "علامات حب الكلاب لاصحابها | هل كلبك يحبك او لا",
     ],
 
     "relaxed": [
-        "علامات راحة الكلاب",
-        "سلوك الكلاب الهادئة",
-        "كيف أجعل كلبي مرتاح",
-        "طرق تهدئة الكلاب",
-        "لغة جسد الكلاب المسترخية",
-        "كيف يشعر الكلب بالأمان"
+        "Dog Body Language 101",
+        "Your Dog May Look Calm — (Here’s Whether They’re Relaxed, Alert, or Quietly Stressed)",
+        "The Calm Settle - for dogs and puppies",
+        "5 ways to build a better relationship with your dog",
     ],
 
     "sad": [
-        "علامات حزن الكلاب",
-        "اكتئاب الكلاب",
-        "كيف أساعد كلب حزين",
-        "أسباب حزن الكلاب",
-        "كيف أجعل كلبي سعيد مرة أخرى",
-        "خمول الكلاب وأسبابه"
+         "اعراض الاكتئاب عند الكلاب وكيف يمكنك ابتهاجه",
+        "إكتئاب الكلاب..؟ 😳",
+        "هل لكلبك مشاعر مثل الانسان . هل يحزن الكلب. يكتئب. اسباب حزن الكلب وكيف نعالجها ؟",
+        "لغة الكلاب / لغة الجسد للكلاب / اسرار لغة الكلاب / افهم كلبك بيقول اي / سامر غازي",
+        "٥ أسباب للخمول عند الكلاب مع الدكتور هاشم طبيب بيطري"
     ]
 }
 
@@ -285,12 +312,11 @@ dog_youtube_queries_ar = {
 cat_youtube_queries_ar = {
 
     "angry": [
-        "كيفية تهدئة القطط الغاضبة",
-        "علاج عدوانية القطط",
-        "علامات غضب القطط",
-        "لغة جسد القطط الغاضبة",
-        "كيف أتعامل مع قطة عصبية",
-        "لماذا تصبح القطط شرسة"
+        "كيف تتعامل مع القطط الشرسة و العنيدة مع الدكتور رامي 😱 جزء 1",
+        "كيف تعرف أن قطتك غاضبة منك؟",
+        "خمسة علامات تدل على غضب القطط من الانسان🐈😠 #قطط",
+        "سبب هجوم القطط على أصحابها",
+        "8 Types of Cat Aggression Explained!"
     ],
 
     "relaxed": [
@@ -298,19 +324,20 @@ cat_youtube_queries_ar = {
         "كيف أعرف أن قطتي مرتاحة",
         "سلوك القطط الهادئة",
         "لغة جسد القطط المسترخية",
-        "كيف أجعل قطتي مرتاحة",
-        "علامات سعادة القطط"
+         "Instantly Improve Your Cat's Life with these 7 Things",
+        "هل قطك سعيد معك؟ 🔍 اكتشف 4 علامات تؤكد ذلك! #قطط #القطط"
     ],
 
     "sad": [
-        "علامات حزن القطط",
+        "5 علامات تدل على زعل القطط من الإنسان 🐈‍⬛🐈 #قطط #قطة",
+        "10 علامات تدل على أن قطك حزين جدا",
         "اكتئاب القطط",
-        "كيف أساعد قطة حزينة",
-        "أسباب حزن القطط",
-        "كيف أجعل قطتي سعيدة",
-        "خمول القطط وحزنها"
+        "اكتئاب القطط / الأسباب ؛ الأعراض والعلاج ؟؟",
+        "5 أشياء تجرح مشاعر القطط 🐈‍⬛😿 #قطط #قطة",
+        "هذه 5 أسباب تجعل قطك حزين"
     ]
 }
+
 
 # =========================================
 # GET VIDEO
@@ -349,7 +376,7 @@ def get_random_arabic_youtube_video(emotion, animal):
 
     data = response.json()
 
-    if "items" not in data:
+    if "items" not in data or len(data["items"]) == 0:
         return None
 
     random_video = random.choice(data["items"])
@@ -384,58 +411,51 @@ def prepare_image(file_bytes):
 # =========================================
 # MAIN API
 # =========================================
+@app.get("/")
+def home():
+    return {"message": "API is running"}
 
 @app.post("/analyze")
 async def analyze_image(
-    file: UploadFile = File(...),
-    animal: str = Form(...)
+    file: UploadFile = File(...)
 ):
-
     file_bytes = await file.read()
+
+    detected = detect_animal_yolo(file_bytes)
+
+    if detected is None:
+        return {
+            "is_animal_supported": False,
+            "message": "الصورة لا تحتوي على كلب أو قطة بوضوح."
+        }
+
+    animal = detected["animal"]
+    detected_confidence = detected["confidence"]
 
     img_array = prepare_image(file_bytes)
 
-    # =====================================
-    # DOG
-    # =====================================
-
     if animal == "dog":
-
         prediction = dog_model.predict(img_array)[0]
 
         pred_index = int(np.argmax(prediction))
-
         emotion = dog_class_labels[pred_index]
-
         confidence = float(prediction[pred_index])
 
         return {
-
+            "is_animal_supported": True,
             "animal": "dog",
-
+            "animal_detection_confidence": detected_confidence,
             "emotion": emotion,
-
             "confidence": confidence,
-
             "probabilities": {
                 dog_class_labels[i]: float(prediction[i])
                 for i in range(len(dog_class_labels))
             },
-
             "tip": random.choice(dog_tips[emotion]),
-
-            "video": get_random_arabic_youtube_video(
-                emotion,
-                "dog"
-            )
+            "video": get_random_arabic_youtube_video(emotion, "dog")
         }
 
-    # =====================================
-    # CAT
-    # =====================================
-
-    elif animal == "cat":
-
+    if animal == "cat":
         prediction = cat_model.predict(img_array)[0]
 
         emotion, confidence, adjusted_prediction = apply_cat_behavior_rules(
@@ -444,26 +464,16 @@ async def analyze_image(
         )
 
         return {
-
+            "is_animal_supported": True,
             "animal": "cat",
-
+            "animal_detection_confidence": detected_confidence,
             "emotion": emotion,
-
             "confidence": confidence,
-
             "probabilities": {
                 cat_class_labels[i]: float(adjusted_prediction[i])
                 for i in range(len(cat_class_labels))
             },
-
             "tip": random.choice(cat_tips[emotion]),
-
-            "video": get_random_arabic_youtube_video(
-                emotion,
-                "cat"
-            )
+            "video": get_random_arabic_youtube_video(emotion, "cat")
         }
-
-    return {
-        "error": "animal must be dog or cat"
-    }
+    
