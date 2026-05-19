@@ -3,9 +3,7 @@ import io
 import json
 import random
 import requests
-import gdown
 import numpy as np
-import tensorflow as tf
 
 from PIL import Image
 from fastapi import FastAPI, UploadFile, File, Form
@@ -13,7 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
-from ultralytics import YOLO
 # =========================================
 # FASTAPI
 # =========================================
@@ -41,16 +38,18 @@ yolo_model = None
 
 def get_dog_model():
     global dog_model
-
-    if not os.path.exists(DOG_MODEL_PATH):
-        gdown.download(
-            url="https://drive.google.com/file/d/15s4lneWlkWg_Acf2NE5szuIZkBXnR3bl/view?usp=drive_link",
-            output=DOG_MODEL_PATH,
-            quiet=False,
-            fuzzy=True
-        )
-
     if dog_model is None:
+        import gdown
+        import tensorflow as tf
+
+        if not os.path.exists(DOG_MODEL_PATH):
+            gdown.download(
+                url="https://drive.google.com/file/d/15s4lneWlkWg_Acf2NE5szuIZkBXnR3bl/view?usp=drive_link",
+                output=DOG_MODEL_PATH,
+                quiet=False,
+                fuzzy=True
+            )
+
         dog_model = tf.keras.models.load_model(DOG_MODEL_PATH)
 
     return dog_model
@@ -58,16 +57,18 @@ def get_dog_model():
 
 def get_cat_model():
     global cat_model
-
-    if not os.path.exists(CAT_MODEL_PATH):
-        gdown.download(
-            url="https://drive.google.com/file/d/1IauPJI2NbPSwlQ2giJO3z3nqtHI33ifh/view?usp=sharing",
-            output=CAT_MODEL_PATH,
-            quiet=False,
-            fuzzy=True
-        )
-
     if cat_model is None:
+        import gdown
+        import tensorflow as tf
+
+        if not os.path.exists(CAT_MODEL_PATH):
+            gdown.download(
+                url="https://drive.google.com/file/d/1IauPJI2NbPSwlQ2giJO3z3nqtHI33ifh/view?usp=sharing",
+                output=CAT_MODEL_PATH,
+                quiet=False,
+                fuzzy=True
+            )
+
         cat_model = tf.keras.models.load_model(CAT_MODEL_PATH)
 
     return cat_model
@@ -75,12 +76,11 @@ def get_cat_model():
 
 def get_yolo_model():
     global yolo_model
-
     if yolo_model is None:
+        from ultralytics import YOLO
         yolo_model = YOLO("yolov8n.pt")
 
     return yolo_model
-
 # =========================
 # YOLO DETECTION
 # =========================
