@@ -370,11 +370,11 @@ def get_random_arabic_youtube_video(emotion, animal):
         "key": YOUTUBE_API_KEY
     }
 
-try:
-    response = requests.get(url, params=params, timeout=3)
-    data = response.json()
-except Exception:
-    return None
+    try:
+        response = requests.get(url, params=params, timeout=3)
+        data = response.json()
+    except Exception:
+        return None
 
     if "items" not in data or len(data["items"]) == 0:
         return None
