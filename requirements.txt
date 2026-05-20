@@ -6,5 +6,3 @@ pillow
 python-multipart
 requests
 gdown
-ultralytics
-opencv-python-headless
