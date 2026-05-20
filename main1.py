@@ -3,7 +3,9 @@ import io
 import json
 import random
 import requests
+import gdown
 import numpy as np
+import tensorflow as tf
 
 from PIL import Image
 from fastapi import FastAPI, UploadFile, File, Form
@@ -11,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+from ultralytics import YOLO
 # =========================================
 # FASTAPI
 # =========================================
@@ -31,65 +34,52 @@ app.add_middleware(
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
+# =========================================
+# DOWNLOAD DOG MODEL
+# =========================================
 
-dog_model = None
-cat_model = None
-yolo_model = None
+DOG_MODEL_PATH = "dog_model.keras"
 
-def get_dog_model():
-    global dog_model
-    if dog_model is None:
-        import gdown
-        import tensorflow as tf
+if not os.path.exists(DOG_MODEL_PATH):
 
-        if not os.path.exists(DOG_MODEL_PATH):
-            gdown.download(
-                url="https://drive.google.com/file/d/15s4lneWlkWg_Acf2NE5szuIZkBXnR3bl/view?usp=drive_link",
-                output=DOG_MODEL_PATH,
-                quiet=False,
-                fuzzy=True
-            )
+    gdown.download(
+        url="https://drive.google.com/file/d/15s4lneWlkWg_Acf2NE5szuIZkBXnR3bl/view?usp=drive_link",
+        output=DOG_MODEL_PATH,
+        quiet=False,
+        fuzzy=True
+    )
 
-        dog_model = tf.keras.models.load_model(DOG_MODEL_PATH)
+# =========================================
+# DOWNLOAD CAT MODEL
+# =========================================
 
-    return dog_model
+CAT_MODEL_PATH = "cat_model.keras"
 
+if not os.path.exists(CAT_MODEL_PATH):
 
-def get_cat_model():
-    global cat_model
-    if cat_model is None:
-        import gdown
-        import tensorflow as tf
+    gdown.download(
+        url="https://drive.google.com/file/d/1IauPJI2NbPSwlQ2giJO3z3nqtHI33ifh/view?usp=sharing",
+        output=CAT_MODEL_PATH,
+        quiet=False,
+        fuzzy=True
+    )
 
-        if not os.path.exists(CAT_MODEL_PATH):
-            gdown.download(
-                url="https://drive.google.com/file/d/1IauPJI2NbPSwlQ2giJO3z3nqtHI33ifh/view?usp=sharing",
-                output=CAT_MODEL_PATH,
-                quiet=False,
-                fuzzy=True
-            )
+# =========================================
+# LOAD MODELS
+# =========================================
 
-        cat_model = tf.keras.models.load_model(CAT_MODEL_PATH)
+dog_model = tf.keras.models.load_model(DOG_MODEL_PATH)
+cat_model = tf.keras.models.load_model(CAT_MODEL_PATH)
+# YOLO animal detector
+yolo_model = YOLO("yolov8n.pt")
 
-    return cat_model
-
-
-def get_yolo_model():
-    global yolo_model
-    if yolo_model is None:
-        from ultralytics import YOLO
-        yolo_model = YOLO("yolov8n.pt")
-
-    return yolo_model
 # =========================
 # YOLO DETECTION
 # =========================
 
 def detect_animal_yolo(file_bytes):
     img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-
-    model = get_yolo_model()
-    results = model(img, verbose=False)
+    results = yolo_model(img, verbose=False)
 
     detected = []
 
@@ -97,8 +87,7 @@ def detect_animal_yolo(file_bytes):
         for box in r.boxes:
             cls_id = int(box.cls[0])
             conf = float(box.conf[0])
-
-            name = model.names[cls_id]
+            name = yolo_model.names[cls_id]
 
             if name in ["dog", "cat"]:
                 detected.append({
@@ -109,13 +98,9 @@ def detect_animal_yolo(file_bytes):
     if not detected:
         return None
 
-    detected = sorted(
-        detected,
-        key=lambda x: x["confidence"],
-        reverse=True
-    )
-
+    detected = sorted(detected, key=lambda x: x["confidence"], reverse=True)
     return detected[0]
+
 
 # =========================================
 # CLASS LABELS
@@ -450,7 +435,7 @@ async def analyze_image(
     img_array = prepare_image(file_bytes)
 
     if animal == "dog":
-        prediction = get_dog_model().predict(img_array)[0]
+        prediction = dog_model.predict(img_array)[0]
 
         pred_index = int(np.argmax(prediction))
         emotion = dog_class_labels[pred_index]
@@ -471,8 +456,8 @@ async def analyze_image(
         }
 
     if animal == "cat":
-        prediction = get_cat_model().predict(img_array)[0]
-        
+        prediction = cat_model.predict(img_array)[0]
+
         emotion, confidence, adjusted_prediction = apply_cat_behavior_rules(
             prediction,
             cat_class_labels
