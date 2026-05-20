@@ -1,16 +1,21 @@
 import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"
+os.environ["YOLO_CONFIG_DIR"] = "/tmp/Ultralytics"
+
 import io
-import json
 import random
 import requests
 import gdown
 import numpy as np
 import tensorflow as tf
 
-from PIL import Image
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
+tf.config.threading.set_inter_op_parallelism_threads(1)
+tf.config.threading.set_intra_op_parallelism_threads(1)
 
+from PIL import Image
+from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from ultralytics import YOLO
@@ -35,13 +40,17 @@ app.add_middleware(
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
 # =========================================
-# DOWNLOAD DOG MODEL
+# DOWNLOAD  MODEL
 # =========================================
 
 DOG_MODEL_PATH = "dog_model.keras"
+CAT_MODEL_PATH = "cat_model.keras"
 
+# cat model موجود داخل GitHub
+cat_model = tf.keras.models.load_model(CAT_MODEL_PATH)
+
+# dog model كبير، يتحمل من Drive فقط إذا غير موجود
 if not os.path.exists(DOG_MODEL_PATH):
-
     gdown.download(
         url="https://drive.google.com/file/d/15s4lneWlkWg_Acf2NE5szuIZkBXnR3bl/view?usp=drive_link",
         output=DOG_MODEL_PATH,
@@ -49,29 +58,10 @@ if not os.path.exists(DOG_MODEL_PATH):
         fuzzy=True
     )
 
-# =========================================
-# DOWNLOAD CAT MODEL
-# =========================================
-
-CAT_MODEL_PATH = "cat_model.keras"
-
-if not os.path.exists(CAT_MODEL_PATH):
-
-    gdown.download(
-        url="https://drive.google.com/file/d/1IauPJI2NbPSwlQ2giJO3z3nqtHI33ifh/view?usp=sharing",
-        output=CAT_MODEL_PATH,
-        quiet=False,
-        fuzzy=True
-    )
-
-# =========================================
-# LOAD MODELS
-# =========================================
-
 dog_model = tf.keras.models.load_model(DOG_MODEL_PATH)
-cat_model = tf.keras.models.load_model(CAT_MODEL_PATH)
-# YOLO animal detector
+
 yolo_model = YOLO("yolov8n.pt")
+    
 
 # =========================
 # YOLO DETECTION
@@ -79,7 +69,16 @@ yolo_model = YOLO("yolov8n.pt")
 
 def detect_animal_yolo(file_bytes):
     img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-    results = yolo_model(img, verbose=False)
+
+    img.thumbnail((640, 640))
+
+    results = yolo_model(
+        img,
+        imgsz=320,
+        conf=0.25,
+        classes=[15, 16],  
+        verbose=False
+    )
 
     detected = []
 
@@ -92,14 +91,13 @@ def detect_animal_yolo(file_bytes):
             if name in ["dog", "cat"]:
                 detected.append({
                     "animal": name,
-                    "confidence": conf
+                    "confidence": round(conf, 3)
                 })
 
     if not detected:
         return None
 
-    detected = sorted(detected, key=lambda x: x["confidence"], reverse=True)
-    return detected[0]
+    return max(detected, key=lambda x: x["confidence"])
 
 
 # =========================================
@@ -372,9 +370,11 @@ def get_random_arabic_youtube_video(emotion, animal):
         "key": YOUTUBE_API_KEY
     }
 
-    response = requests.get(url, params=params)
-
+try:
+    response = requests.get(url, params=params, timeout=3)
     data = response.json()
+except Exception:
+    return None
 
     if "items" not in data or len(data["items"]) == 0:
         return None
