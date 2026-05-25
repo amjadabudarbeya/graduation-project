@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+from tensorflow.keras.layers import Dense
 
 # =========================================
 # FASTAPI
@@ -38,7 +39,10 @@ YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 # DOWNLOAD DOG MODEL
 # =========================================
 
-DOG_MODEL_PATH = "dog_model.keras"
+MODEL_DIR = os.getenv("MODEL_DIR", ".")
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+DOG_MODEL_PATH = os.path.join(MODEL_DIR, "dog_model.keras")
 
 if not os.path.exists(DOG_MODEL_PATH):
 
@@ -52,7 +56,7 @@ if not os.path.exists(DOG_MODEL_PATH):
 # DOWNLOAD CAT MODEL
 # =========================================
 
-CAT_MODEL_PATH = "cat_model.keras"
+CAT_MODEL_PATH = os.path.join(MODEL_DIR, "cat_model.keras")
 
 if not os.path.exists(CAT_MODEL_PATH):
 
@@ -66,8 +70,21 @@ if not os.path.exists(CAT_MODEL_PATH):
 # LOAD MODELS
 # =========================================
 
-dog_model = tf.keras.models.load_model(DOG_MODEL_PATH)
-cat_model = tf.keras.models.load_model(CAT_MODEL_PATH)
+def _patch_dense_config_for_saved_models():
+    original_from_config = Dense.from_config
+
+    def from_config(cls, config):
+        config = dict(config)
+        config.pop("quantization_config", None)
+        return original_from_config(config)
+
+    Dense.from_config = classmethod(from_config)
+
+
+_patch_dense_config_for_saved_models()
+
+dog_model = tf.keras.models.load_model(DOG_MODEL_PATH, compile=False)
+cat_model = tf.keras.models.load_model(CAT_MODEL_PATH, compile=False)
 
 # =========================================
 # CLASS LABELS
