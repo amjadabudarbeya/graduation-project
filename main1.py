@@ -438,6 +438,69 @@ youtube_excluded_words = [
     "film"
 ]
 
+youtube_fallback_videos = {
+    "dog": {
+        "angry": [
+            {
+                "title": "لحظة هجوم الكلاب علي أصحابها وما هي الاسباب | ثلاث أسباب لهجوم الكلاب وكيفية تجنبها",
+                "channel": "Mafia Dogs & Cats عصابة الكلاب و القطط",
+                "url": "https://www.youtube.com/watch?v=HWJEpZ1DYjU",
+                "thumbnail": "https://i.ytimg.com/vi/HWJEpZ1DYjU/mqdefault.jpg"
+            }
+        ],
+        "happy": [
+            {
+                "title": "علامات سعادة كلبك: تعرف عليها الآن",
+                "channel": "حيواناتي",
+                "url": "https://www.youtube.com/watch?v=Grv1Vq2_-H4",
+                "thumbnail": "https://i.ytimg.com/vi/Grv1Vq2_-H4/mqdefault.jpg"
+            }
+        ],
+        "relaxed": [
+            {
+                "title": "تدريب الكلب علي الطاعة تدريب الكلب علي اداب الطعام التدريب علي امر المنع مع سامر تي في دوج",
+                "channel": "تي في دوج Tv Dogs",
+                "url": "https://www.youtube.com/watch?v=Cn9rcMzgdJs",
+                "thumbnail": "https://i.ytimg.com/vi/Cn9rcMzgdJs/mqdefault.jpg"
+            }
+        ],
+        "sad": [
+            {
+                "title": "هل كلبك حزين؟ علامات لا ينتبه لها معظم الناس",
+                "channel": "لغة الوفاء",
+                "url": "https://www.youtube.com/watch?v=fcR8vRLfSes",
+                "thumbnail": "https://i.ytimg.com/vi/fcR8vRLfSes/mqdefault.jpg"
+            }
+        ]
+    },
+    "cat": {
+        "angry": [
+            {
+                "title": "سبب هجوم القطط على أصحابها",
+                "channel": "Dr Wahid - دكتور مياو",
+                "url": "https://www.youtube.com/watch?v=clD1uFzWhBA",
+                "thumbnail": "https://i.ytimg.com/vi/clD1uFzWhBA/mqdefault.jpg"
+            }
+        ],
+        "relaxed": [
+            {
+                "title": "فهم لغة جسد القطط: كيف تعرف إذا كانت قطتك سعيدة أو متوترة؟",
+                "channel": "Vet-C",
+                "url": "https://www.youtube.com/watch?v=mIMIhgZLGHQ",
+                "thumbnail": "https://i.ytimg.com/vi/mIMIhgZLGHQ/mqdefault.jpg"
+            }
+        ],
+        "sad": [
+            {
+                "title": "نصائح لعلاج اكتئاب القطط",
+                "channel": "Farah samir",
+                "url": "https://www.youtube.com/watch?v=NC0qivFiNZo",
+                "thumbnail": "https://i.ytimg.com/vi/NC0qivFiNZo/mqdefault.jpg"
+            }
+        ]
+    }
+}
+
 
 def _contains_any(text, words):
     normalized = text.lower()
@@ -620,7 +683,16 @@ def get_random_arabic_youtube_video(emotion, animal):
         _set_cached_youtube_videos(cache_key, english_videos)
         return random.choice(english_videos)
 
-    return None
+    fallback_videos = youtube_fallback_videos.get(animal, {}).get(emotion, [])
+    if fallback_videos:
+        return random.choice(fallback_videos)
+
+    return {
+        "title": "فيديو تعليمي عن رعاية الحيوانات الأليفة",
+        "channel": "YouTube",
+        "url": "https://www.youtube.com/results?search_query=pet+care+animal+behavior",
+        "thumbnail": "https://i.ytimg.com/vi/Grv1Vq2_-H4/mqdefault.jpg"
+    }
 
 # =========================================
 # IMAGE PREPROCESS
