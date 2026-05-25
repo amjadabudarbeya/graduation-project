@@ -20,6 +20,7 @@ image = (
 )
 
 models_volume = modal.Volume.from_name("petsense-emotion-models", create_if_missing=True)
+youtube_secret = modal.Secret.from_name("petsense-youtube-api-key")
 
 app = modal.App("petsense-emotion-analysis")
 
@@ -27,6 +28,7 @@ app = modal.App("petsense-emotion-analysis")
 @app.function(
     image=image,
     volumes={"/models": models_volume},
+    secrets=[youtube_secret],
     timeout=900,
 )
 def warmup_models():
@@ -45,6 +47,7 @@ def warmup_models():
 @app.function(
     image=image,
     volumes={"/models": models_volume},
+    secrets=[youtube_secret],
     timeout=600,
     scaledown_window=300,
 )
