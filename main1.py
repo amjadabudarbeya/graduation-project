@@ -4,6 +4,7 @@ import json
 import random
 import re
 import requests
+import time
 import gdown
 import numpy as np
 import tensorflow as tf
@@ -35,6 +36,7 @@ app.add_middleware(
 # =========================================
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+YOUTUBE_CACHE_TTL_SECONDS = 60 * 60 * 12
 
 # =========================================
 # DOWNLOAD DOG MODEL
@@ -42,6 +44,7 @@ YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
 MODEL_DIR = os.getenv("MODEL_DIR", ".")
 os.makedirs(MODEL_DIR, exist_ok=True)
+YOUTUBE_CACHE_PATH = os.path.join(MODEL_DIR, "youtube_video_cache.json")
 
 DOG_MODEL_PATH = os.path.join(MODEL_DIR, "dog_model.keras")
 
@@ -329,31 +332,86 @@ cat_youtube_queries_ar = {
     ]
 }
 
+dog_youtube_queries_en = {
+    "angry": [
+        "aggressive dog behavior how to handle",
+        "angry dog body language signs",
+        "how to calm an aggressive dog",
+        "dog aggression causes and training",
+        "how to deal with a reactive dog"
+    ],
+    "happy": [
+        "signs your dog is happy",
+        "how to know your dog is happy",
+        "happy dog body language",
+        "how to make your dog happy and healthy",
+        "ways dogs show love to owners"
+    ],
+    "relaxed": [
+        "relaxed dog body language",
+        "signs your dog is calm and relaxed",
+        "how to calm your dog",
+        "dog relaxation training",
+        "how to teach a dog to settle"
+    ],
+    "sad": [
+        "signs your dog is sad",
+        "dog depression symptoms",
+        "how to help a sad dog",
+        "why is my dog sad",
+        "sad dog body language"
+    ]
+}
+
+cat_youtube_queries_en = {
+    "angry": [
+        "angry cat body language",
+        "signs your cat is angry",
+        "how to calm an angry cat",
+        "cat aggression causes and solutions",
+        "why cats attack owners"
+    ],
+    "relaxed": [
+        "relaxed cat body language",
+        "signs your cat is relaxed",
+        "how to calm your cat",
+        "signs your cat is happy and comfortable",
+        "cat body language relaxed"
+    ],
+    "sad": [
+        "signs your cat is sad",
+        "cat depression symptoms",
+        "how to help a sad cat",
+        "why is my cat sad",
+        "sad cat body language"
+    ]
+}
+
 # =========================================
 # GET VIDEO
 # =========================================
 
 youtube_filter_words = {
     "dog": {
-        "animal": ["كلب", "كلاب", "كلبك", "الكلب"],
-        "angry": ["غاضب", "غضب", "عدواني", "عدوانية", "هجوم", "عض", "متوتر", "شرس", "تهدئة", "ينبح", "تنبح", "نباح"],
-        "happy": ["سعيد", "سعادة", "فرح", "يلعب", "اللعب", "حب", "يحبك"],
-        "relaxed": ["هادئ", "هدوء", "استرخاء", "مسترخي", "راحة", "لغة جسد", "طاعة", "مطيع"],
-        "sad": ["حزين", "حزن", "اكتئاب", "خمول", "منخفض", "زعلان", "مكتئب"]
+        "animal": ["كلب", "كلاب", "كلبك", "الكلب", "dog", "dogs", "puppy"],
+        "angry": ["غاضب", "غضب", "عدواني", "عدوانية", "هجوم", "عض", "متوتر", "شرس", "تهدئة", "ينبح", "تنبح", "نباح", "aggressive", "aggression", "angry", "reactive", "bite", "barking", "calm"],
+        "happy": ["سعيد", "سعادة", "فرح", "يلعب", "اللعب", "حب", "يحبك", "happy", "happiness", "love", "play", "joy"],
+        "relaxed": ["هادئ", "هدوء", "استرخاء", "مسترخي", "راحة", "لغة جسد", "طاعة", "مطيع", "relaxed", "calm", "settle", "relaxation", "body language"],
+        "sad": ["حزين", "حزن", "اكتئاب", "خمول", "منخفض", "زعلان", "مكتئب", "sad", "depressed", "depression", "unhappy", "body language"]
     },
     "cat": {
-        "animal": ["قطة", "قطط", "قطتك", "القطة", "قط"],
-        "angry": ["غاضبة", "غاضب", "غضب", "عدوانية", "هجوم", "شرسة", "عض", "تهدئة", "لا تحبك", "تصرفات"],
-        "relaxed": ["هادئة", "هادئ", "هدوء", "استرخاء", "مسترخية", "راحة", "مرتاحة", "سعيدة", "تهدئ"],
-        "sad": ["حزينة", "حزين", "حزن", "اكتئاب", "زعلانة", "خمول", "مكتئبة"]
+        "animal": ["قطة", "قطط", "قطتك", "القطة", "قط", "cat", "cats", "kitten"],
+        "angry": ["غاضبة", "غاضب", "غضب", "عدوانية", "هجوم", "شرسة", "عض", "تهدئة", "لا تحبك", "تصرفات", "angry", "aggressive", "aggression", "attack", "calm"],
+        "relaxed": ["هادئة", "هادئ", "هدوء", "استرخاء", "مسترخية", "راحة", "مرتاحة", "سعيدة", "تهدئ", "relaxed", "calm", "comfortable", "happy", "body language"],
+        "sad": ["حزينة", "حزين", "حزن", "اكتئاب", "زعلانة", "خمول", "مكتئبة", "sad", "depressed", "depression", "unhappy", "body language"]
     }
 }
 
 youtube_emotion_excluded_words = {
     "relaxed": ["ينبح", "تنبح", "نباح", "هجوم", "عدوان", "غاضب", "غضب"],
-    "happy": ["حزين", "حزن", "اكتئاب", "غاضب", "غضب", "هجوم"],
-    "sad": ["الكلب الاسود", "الكلب الأسود", "كلب اسود", "كلب أسود", "كتاب", "مريض", "مرض", "التعافي", "البشر", "الانسان", "الإنسان", "ببساطه", "ببساطة"],
-    "angry": ["سعيد", "سعادة", "هادئ", "هدوء", "استرخاء"]
+    "happy": ["حزين", "حزن", "اكتئاب", "غاضب", "غضب", "هجوم", "sad", "depression", "aggressive"],
+    "sad": ["الكلب الاسود", "الكلب الأسود", "كلب اسود", "كلب أسود", "كتاب", "مريض", "مرض", "التعافي", "البشر", "الانسان", "الإنسان", "ببساطه", "ببساطة", "black dog", "book", "human depression"],
+    "angry": ["سعيد", "سعادة", "هادئ", "هدوء", "استرخاء", "happy", "relaxed"]
 }
 
 youtube_excluded_words = [
@@ -390,7 +448,7 @@ def _has_arabic_text(text):
     return re.search(r"[\u0600-\u06FF]", text) is not None
 
 
-def _is_relevant_youtube_item(item, animal, emotion):
+def _is_relevant_youtube_item(item, animal, emotion, require_arabic):
     snippet = item.get("snippet", {})
     title = snippet.get("title", "")
     description = snippet.get("description", "")
@@ -403,7 +461,7 @@ def _is_relevant_youtube_item(item, animal, emotion):
     animal_words = filters.get("animal", [])
     emotion_words = filters.get(emotion, [])
 
-    if not _has_arabic_text(title):
+    if require_arabic and not _has_arabic_text(title):
         return False
 
     if _contains_any(searchable_text, youtube_excluded_words):
@@ -435,27 +493,53 @@ def _build_youtube_video(item):
         "thumbnail": thumbnail
     }
 
-def get_random_arabic_youtube_video(emotion, animal):
+def _load_youtube_cache():
+    try:
+        with open(YOUTUBE_CACHE_PATH, "r", encoding="utf-8") as cache_file:
+            return json.load(cache_file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
-    if not YOUTUBE_API_KEY:
+
+def _save_youtube_cache(cache):
+    try:
+        with open(YOUTUBE_CACHE_PATH, "w", encoding="utf-8") as cache_file:
+            json.dump(cache, cache_file, ensure_ascii=False)
+    except OSError:
+        pass
+
+
+def _get_cached_youtube_videos(cache_key):
+    cache = _load_youtube_cache()
+    entry = cache.get(cache_key)
+
+    if not entry:
         return None
 
-    if animal == "dog":
-        queries = dog_youtube_queries_ar
-
-    elif animal == "cat":
-        queries = cat_youtube_queries_ar
-
-    else:
+    if time.time() - entry.get("created_at", 0) > YOUTUBE_CACHE_TTL_SECONDS:
         return None
 
+    videos = entry.get("videos", [])
+    return videos or None
+
+
+def _set_cached_youtube_videos(cache_key, videos):
+    cache = _load_youtube_cache()
+    cache[cache_key] = {
+        "created_at": time.time(),
+        "videos": videos
+    }
+    _save_youtube_cache(cache)
+
+
+def _search_youtube_videos(queries, animal, emotion, require_arabic, relevance_language, region_code):
     url = "https://www.googleapis.com/youtube/v3/search"
     candidate_videos = []
 
     selected_queries = queries.get(emotion, []).copy()
     random.shuffle(selected_queries)
 
-    for query in selected_queries[:3]:
+    for query in selected_queries[:1]:
         params = {
             "part": "snippet",
             "q": query,
@@ -463,8 +547,8 @@ def get_random_arabic_youtube_video(emotion, animal):
             "videoEmbeddable": "true",
             "videoDuration": "medium",
             "maxResults": 25,
-            "relevanceLanguage": "ar",
-            "regionCode": "SA",
+            "relevanceLanguage": relevance_language,
+            "regionCode": region_code,
             "safeSearch": "strict",
             "key": YOUTUBE_API_KEY
         }
@@ -479,16 +563,64 @@ def get_random_arabic_youtube_video(emotion, animal):
         items = data.get("items", [])
 
         for item in items:
-            if _is_relevant_youtube_item(item, animal, emotion):
-                candidate_videos.append(item)
+            if _is_relevant_youtube_item(item, animal, emotion, require_arabic):
+                candidate_videos.append(_build_youtube_video(item))
 
         if candidate_videos:
             break
 
-    if not candidate_videos:
+    return candidate_videos
+
+
+def get_random_arabic_youtube_video(emotion, animal):
+
+    if not YOUTUBE_API_KEY:
         return None
 
-    return _build_youtube_video(random.choice(candidate_videos))
+    if animal == "dog":
+        queries = dog_youtube_queries_ar
+        fallback_queries = dog_youtube_queries_en
+
+    elif animal == "cat":
+        queries = cat_youtube_queries_ar
+        fallback_queries = cat_youtube_queries_en
+
+    else:
+        return None
+
+    cache_key = f"{animal}:{emotion}:youtube_recommendations"
+    cached_videos = _get_cached_youtube_videos(cache_key)
+
+    if cached_videos:
+        return random.choice(cached_videos)
+
+    arabic_videos = _search_youtube_videos(
+        queries,
+        animal,
+        emotion,
+        require_arabic=True,
+        relevance_language="ar",
+        region_code="SA"
+    )
+
+    if arabic_videos:
+        _set_cached_youtube_videos(cache_key, arabic_videos)
+        return random.choice(arabic_videos)
+
+    english_videos = _search_youtube_videos(
+        fallback_queries,
+        animal,
+        emotion,
+        require_arabic=False,
+        relevance_language="en",
+        region_code="US"
+    )
+
+    if english_videos:
+        _set_cached_youtube_videos(cache_key, english_videos)
+        return random.choice(english_videos)
+
+    return None
 
 # =========================================
 # IMAGE PREPROCESS
