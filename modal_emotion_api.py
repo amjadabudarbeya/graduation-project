@@ -48,6 +48,39 @@ def warmup_models():
     image=image,
     volumes={"/models": models_volume},
     secrets=[youtube_secret],
+    timeout=300,
+)
+def test_youtube_filters():
+    import json
+    import os
+    import sys
+
+    os.environ["MODEL_DIR"] = "/models"
+    sys.path.insert(0, "/root")
+
+    from main1 import get_random_arabic_youtube_video
+
+    cases = {
+        "dog": ["angry", "happy", "relaxed", "sad"],
+        "cat": ["angry", "relaxed", "sad"],
+    }
+
+    results = {
+        animal: {
+            emotion: get_random_arabic_youtube_video(emotion, animal)
+            for emotion in emotions
+        }
+        for animal, emotions in cases.items()
+    }
+
+    print(json.dumps(results, ensure_ascii=False, indent=2))
+    return results
+
+
+@app.function(
+    image=image,
+    volumes={"/models": models_volume},
+    secrets=[youtube_secret],
     timeout=600,
     scaledown_window=300,
 )
