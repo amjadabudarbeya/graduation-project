@@ -2,7 +2,9 @@ import os
 import io
 import json
 import random
+import re
 import requests
+import time
 import gdown
 import numpy as np
 import tensorflow as tf
@@ -13,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+from tensorflow.keras.layers import Dense
 
 # =========================================
 # FASTAPI
@@ -33,12 +36,17 @@ app.add_middleware(
 # =========================================
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+YOUTUBE_CACHE_TTL_SECONDS = 60 * 60 * 12
 
 # =========================================
 # DOWNLOAD DOG MODEL
 # =========================================
 
-DOG_MODEL_PATH = "dog_model.keras"
+MODEL_DIR = os.getenv("MODEL_DIR", ".")
+os.makedirs(MODEL_DIR, exist_ok=True)
+YOUTUBE_CACHE_PATH = os.path.join(MODEL_DIR, "youtube_video_cache.json")
+
+DOG_MODEL_PATH = os.path.join(MODEL_DIR, "dog_model.keras")
 
 if not os.path.exists(DOG_MODEL_PATH):
 
@@ -52,7 +60,7 @@ if not os.path.exists(DOG_MODEL_PATH):
 # DOWNLOAD CAT MODEL
 # =========================================
 
-CAT_MODEL_PATH = "cat_model.keras"
+CAT_MODEL_PATH = os.path.join(MODEL_DIR, "cat_model.keras")
 
 if not os.path.exists(CAT_MODEL_PATH):
 
@@ -66,8 +74,21 @@ if not os.path.exists(CAT_MODEL_PATH):
 # LOAD MODELS
 # =========================================
 
-dog_model = tf.keras.models.load_model(DOG_MODEL_PATH)
-cat_model = tf.keras.models.load_model(CAT_MODEL_PATH)
+def _patch_dense_config_for_saved_models():
+    original_from_config = Dense.from_config
+
+    def from_config(cls, config):
+        config = dict(config)
+        config.pop("quantization_config", None)
+        return original_from_config(config)
+
+    Dense.from_config = classmethod(from_config)
+
+
+_patch_dense_config_for_saved_models()
+
+dog_model = tf.keras.models.load_model(DOG_MODEL_PATH, compile=False)
+cat_model = tf.keras.models.load_model(CAT_MODEL_PATH, compile=False)
 
 # =========================================
 # CLASS LABELS
@@ -242,33 +263,37 @@ dog_tips = {
 dog_youtube_queries_ar = {
 
     "angry": [
-        "السلوك العدواني للكلاب والهيبره وكيفيه علاجها",
-        "افهم لغة جسد الكلاب في الحالات المزاجية مثل متى يكون سعيد او خايف او قلق ومتوتر او غضبان",
-        "١٠ تصرفات تغضب الكلاب منك / الجزء الأول",
-        "لحظة هجوم الكلاب علي أصحابها وما هي الاسباب | ثلاث أسباب لهجوم الكلاب وكيفية تجنبها",
-        "اذا فعلت هذا الخطأ كلبك يعضك بهجوم شرس وخطير"
+        "كلب غاضب كيف تتعامل معه",
+        "السلوك العدواني عند الكلاب وطرق التعامل معه",
+        "علامات غضب الكلب ولغة الجسد",
+        "تهدئة الكلب الغاضب أو المتوتر",
+        "أسباب عدوانية الكلاب وكيفية علاجها"
     ],
 
     "happy": [
-        "علامات سعادة كلبك: تعرف عليها الآن",
-        "10 Signs Your Dog Is Truly Happy and Healthy – #7 Will Surprise You!",
-        "طريقة اللعب الصحيحه مع كلبك في البيت 🐶",
-        "علامات حب الكلاب لاصحابها | هل كلبك يحبك او لا",
+        "علامات سعادة الكلب",
+        "كيف تعرف أن كلبك سعيد",
+        "اللعب الصحيح مع الكلاب السعيدة",
+        "علامات حب الكلب لصاحبه",
+        "كيف تجعل كلبك سعيد وصحي"
     ],
 
     "relaxed": [
-        "Dog Body Language 101",
-        "Your Dog May Look Calm — (Here’s Whether They’re Relaxed, Alert, or Quietly Stressed)",
-        "The Calm Settle - for dogs and puppies",
-        "5 ways to build a better relationship with your dog",
+        "علامات هدوء الكلب واسترخائه",
+        "لغة جسد الكلب الهادئ",
+        "كيف تتعامل مع كلب هادئ",
+        "تدريب الكلب على الهدوء والاسترخاء",
+        "روتين يساعد الكلب على الهدوء",
+        "كيف تجعل كلبك هادئ",
+        "تدريب الكلب على الهدوء والطاعة"
     ],
 
     "sad": [
-         "اعراض الاكتئاب عند الكلاب وكيف يمكنك ابتهاجه",
-        "إكتئاب الكلاب..؟ 😳",
-        "هل لكلبك مشاعر مثل الانسان . هل يحزن الكلب. يكتئب. اسباب حزن الكلب وكيف نعالجها ؟",
-        "لغة الكلاب / لغة الجسد للكلاب / اسرار لغة الكلاب / افهم كلبك بيقول اي / سامر غازي",
-        "٥ أسباب للخمول عند الكلاب مع الدكتور هاشم طبيب بيطري"
+        "علامات حزن الكلب",
+        "اكتئاب الكلاب وأسبابه وعلاجه",
+        "كيف تساعد كلب حزين",
+        "أسباب خمول وحزن الكلاب",
+        "لغة جسد الكلب الحزين"
     ]
 }
 
@@ -279,29 +304,86 @@ dog_youtube_queries_ar = {
 cat_youtube_queries_ar = {
 
     "angry": [
-        "كيف تتعامل مع القطط الشرسة و العنيدة مع الدكتور رامي 😱 جزء 1",
-        "كيف تعرف أن قطتك غاضبة منك؟",
-        "خمسة علامات تدل على غضب القطط من الانسان🐈😠 #قطط",
-        "سبب هجوم القطط على أصحابها",
-        "8 Types of Cat Aggression Explained!"
+        "قطة غاضبة كيف تتعامل معها",
+        "علامات غضب القطط",
+        "السلوك العدواني عند القطط",
+        "تهدئة القطة الغاضبة",
+        "أسباب هجوم القطط على أصحابها"
     ],
 
     "relaxed": [
         "علامات راحة القطط",
         "كيف أعرف أن قطتي مرتاحة",
         "سلوك القطط الهادئة",
-        "لغة جسد القطط المسترخية",
-         "Instantly Improve Your Cat's Life with these 7 Things",
-        "هل قطك سعيد معك؟ 🔍 اكتشف 4 علامات تؤكد ذلك! #قطط #القطط"
+        "لغة جسد القطة المسترخية",
+        "كيف تجعل القطة هادئة ومرتاحة",
+        "علامات القطة السعيدة والمرتاحة",
+        "كيف تهدئ قطتك"
     ],
 
     "sad": [
-        "5 علامات تدل على زعل القطط من الإنسان 🐈‍⬛🐈 #قطط #قطة",
-        "10 علامات تدل على أن قطك حزين جدا",
-        "اكتئاب القطط",
-        "اكتئاب القطط / الأسباب ؛ الأعراض والعلاج ؟؟",
-        "5 أشياء تجرح مشاعر القطط 🐈‍⬛😿 #قطط #قطة",
-        "هذه 5 أسباب تجعل قطك حزين"
+        "علامات حزن القطط",
+        "اكتئاب القطط الأسباب والعلاج",
+        "كيف تساعد قطة حزينة",
+        "أسباب حزن القطة",
+        "لغة جسد القطة الحزينة",
+        "كيف أعرف أن قطتي حزينة",
+        "علاج حزن القطط"
+    ]
+}
+
+dog_youtube_queries_en = {
+    "angry": [
+        "aggressive dog behavior how to handle",
+        "angry dog body language signs",
+        "how to calm an aggressive dog",
+        "dog aggression causes and training",
+        "how to deal with a reactive dog"
+    ],
+    "happy": [
+        "signs your dog is happy",
+        "how to know your dog is happy",
+        "happy dog body language",
+        "how to make your dog happy and healthy",
+        "ways dogs show love to owners"
+    ],
+    "relaxed": [
+        "relaxed dog body language",
+        "signs your dog is calm and relaxed",
+        "how to calm your dog",
+        "dog relaxation training",
+        "how to teach a dog to settle"
+    ],
+    "sad": [
+        "signs your dog is sad",
+        "dog depression symptoms",
+        "how to help a sad dog",
+        "why is my dog sad",
+        "sad dog body language"
+    ]
+}
+
+cat_youtube_queries_en = {
+    "angry": [
+        "angry cat body language",
+        "signs your cat is angry",
+        "how to calm an angry cat",
+        "cat aggression causes and solutions",
+        "why cats attack owners"
+    ],
+    "relaxed": [
+        "relaxed cat body language",
+        "signs your cat is relaxed",
+        "how to calm your cat",
+        "signs your cat is happy and comfortable",
+        "cat body language relaxed"
+    ],
+    "sad": [
+        "signs your cat is sad",
+        "cat depression symptoms",
+        "how to help a sad cat",
+        "why is my cat sad",
+        "sad cat body language"
     ]
 }
 
@@ -309,51 +391,307 @@ cat_youtube_queries_ar = {
 # GET VIDEO
 # =========================================
 
+youtube_filter_words = {
+    "dog": {
+        "animal": ["كلب", "كلاب", "كلبك", "الكلب", "dog", "dogs", "puppy"],
+        "angry": ["غاضب", "غضب", "عدواني", "عدوانية", "هجوم", "عض", "متوتر", "شرس", "تهدئة", "ينبح", "تنبح", "نباح", "aggressive", "aggression", "angry", "reactive", "bite", "barking", "calm"],
+        "happy": ["سعيد", "سعادة", "فرح", "يلعب", "اللعب", "حب", "يحبك", "happy", "happiness", "love", "play", "joy"],
+        "relaxed": ["هادئ", "هدوء", "استرخاء", "مسترخي", "راحة", "لغة جسد", "طاعة", "مطيع", "relaxed", "calm", "settle", "relaxation", "body language"],
+        "sad": ["حزين", "حزن", "اكتئاب", "خمول", "منخفض", "زعلان", "مكتئب", "sad", "depressed", "depression", "unhappy", "body language"]
+    },
+    "cat": {
+        "animal": ["قطة", "قطط", "قطتك", "القطة", "قط", "cat", "cats", "kitten"],
+        "angry": ["غاضبة", "غاضب", "غضب", "عدوانية", "هجوم", "شرسة", "عض", "تهدئة", "لا تحبك", "تصرفات", "angry", "aggressive", "aggression", "attack", "calm"],
+        "relaxed": ["هادئة", "هادئ", "هدوء", "استرخاء", "مسترخية", "راحة", "مرتاحة", "سعيدة", "تهدئ", "relaxed", "calm", "comfortable", "happy", "body language"],
+        "sad": ["حزينة", "حزين", "حزن", "اكتئاب", "زعلانة", "خمول", "مكتئبة", "sad", "depressed", "depression", "unhappy", "body language"]
+    }
+}
+
+youtube_emotion_excluded_words = {
+    "relaxed": ["ينبح", "تنبح", "نباح", "هجوم", "عدوان", "غاضب", "غضب"],
+    "happy": ["حزين", "حزن", "اكتئاب", "غاضب", "غضب", "هجوم", "sad", "depression", "aggressive"],
+    "sad": ["الكلب الاسود", "الكلب الأسود", "كلب اسود", "كلب أسود", "كتاب", "مريض", "مرض", "التعافي", "البشر", "الانسان", "الإنسان", "ببساطه", "ببساطة", "black dog", "book", "human depression"],
+    "angry": ["سعيد", "سعادة", "هادئ", "هدوء", "استرخاء", "happy", "relaxed"]
+}
+
+youtube_excluded_words = [
+    "اغنية",
+    "أغنية",
+    "كليب",
+    "موسيقى",
+    "رقص",
+    "ضحك",
+    "مضحك",
+    "طريف",
+    "طريفة",
+    "طرائف",
+    "ميمز",
+    "تيك توك",
+    "tiktok",
+    "shorts",
+    "cartoon",
+    "كرتون",
+    "انمي",
+    "لعبة",
+    "game",
+    "movie",
+    "film"
+]
+
+youtube_fallback_videos = {
+    "dog": {
+        "angry": [
+            {
+                "title": "لحظة هجوم الكلاب علي أصحابها وما هي الاسباب | ثلاث أسباب لهجوم الكلاب وكيفية تجنبها",
+                "channel": "Mafia Dogs & Cats عصابة الكلاب و القطط",
+                "url": "https://www.youtube.com/watch?v=HWJEpZ1DYjU",
+                "thumbnail": "https://i.ytimg.com/vi/HWJEpZ1DYjU/mqdefault.jpg"
+            }
+        ],
+        "happy": [
+            {
+                "title": "علامات سعادة كلبك: تعرف عليها الآن",
+                "channel": "حيواناتي",
+                "url": "https://www.youtube.com/watch?v=Grv1Vq2_-H4",
+                "thumbnail": "https://i.ytimg.com/vi/Grv1Vq2_-H4/mqdefault.jpg"
+            }
+        ],
+        "relaxed": [
+            {
+                "title": "تدريب الكلب علي الطاعة تدريب الكلب علي اداب الطعام التدريب علي امر المنع مع سامر تي في دوج",
+                "channel": "تي في دوج Tv Dogs",
+                "url": "https://www.youtube.com/watch?v=Cn9rcMzgdJs",
+                "thumbnail": "https://i.ytimg.com/vi/Cn9rcMzgdJs/mqdefault.jpg"
+            }
+        ],
+        "sad": [
+            {
+                "title": "هل كلبك حزين؟ علامات لا ينتبه لها معظم الناس",
+                "channel": "لغة الوفاء",
+                "url": "https://www.youtube.com/watch?v=fcR8vRLfSes",
+                "thumbnail": "https://i.ytimg.com/vi/fcR8vRLfSes/mqdefault.jpg"
+            }
+        ]
+    },
+    "cat": {
+        "angry": [
+            {
+                "title": "سبب هجوم القطط على أصحابها",
+                "channel": "Dr Wahid - دكتور مياو",
+                "url": "https://www.youtube.com/watch?v=clD1uFzWhBA",
+                "thumbnail": "https://i.ytimg.com/vi/clD1uFzWhBA/mqdefault.jpg"
+            }
+        ],
+        "relaxed": [
+            {
+                "title": "فهم لغة جسد القطط: كيف تعرف إذا كانت قطتك سعيدة أو متوترة؟",
+                "channel": "Vet-C",
+                "url": "https://www.youtube.com/watch?v=mIMIhgZLGHQ",
+                "thumbnail": "https://i.ytimg.com/vi/mIMIhgZLGHQ/mqdefault.jpg"
+            }
+        ],
+        "sad": [
+            {
+                "title": "نصائح لعلاج اكتئاب القطط",
+                "channel": "Farah samir",
+                "url": "https://www.youtube.com/watch?v=NC0qivFiNZo",
+                "thumbnail": "https://i.ytimg.com/vi/NC0qivFiNZo/mqdefault.jpg"
+            }
+        ]
+    }
+}
+
+
+def _contains_any(text, words):
+    normalized = text.lower()
+    return any(word.lower() in normalized for word in words)
+
+
+def _has_arabic_text(text):
+    return re.search(r"[\u0600-\u06FF]", text) is not None
+
+
+def _is_relevant_youtube_item(item, animal, emotion, require_arabic):
+    snippet = item.get("snippet", {})
+    title = snippet.get("title", "")
+    description = snippet.get("description", "")
+    searchable_text = " ".join([
+        title,
+        description
+    ])
+
+    filters = youtube_filter_words.get(animal, {})
+    animal_words = filters.get("animal", [])
+    emotion_words = filters.get(emotion, [])
+
+    if require_arabic and not _has_arabic_text(title):
+        return False
+
+    if _contains_any(searchable_text, youtube_excluded_words):
+        return False
+
+    if _contains_any(searchable_text, youtube_emotion_excluded_words.get(emotion, [])):
+        return False
+
+    return (
+        _contains_any(title, animal_words)
+        and _contains_any(title, emotion_words)
+    )
+
+
+def _build_youtube_video(item):
+    snippet = item["snippet"]
+    video_id = item["id"]["videoId"]
+    thumbnails = snippet.get("thumbnails", {})
+    thumbnail = (
+        thumbnails.get("medium", {})
+        or thumbnails.get("high", {})
+        or thumbnails.get("default", {})
+    ).get("url")
+
+    return {
+        "title": snippet["title"],
+        "channel": snippet["channelTitle"],
+        "url": f"https://www.youtube.com/watch?v={video_id}",
+        "thumbnail": thumbnail
+    }
+
+def _load_youtube_cache():
+    try:
+        with open(YOUTUBE_CACHE_PATH, "r", encoding="utf-8") as cache_file:
+            return json.load(cache_file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_youtube_cache(cache):
+    try:
+        with open(YOUTUBE_CACHE_PATH, "w", encoding="utf-8") as cache_file:
+            json.dump(cache, cache_file, ensure_ascii=False)
+    except OSError:
+        pass
+
+
+def _get_cached_youtube_videos(cache_key):
+    cache = _load_youtube_cache()
+    entry = cache.get(cache_key)
+
+    if not entry:
+        return None
+
+    if time.time() - entry.get("created_at", 0) > YOUTUBE_CACHE_TTL_SECONDS:
+        return None
+
+    videos = entry.get("videos", [])
+    return videos or None
+
+
+def _set_cached_youtube_videos(cache_key, videos):
+    cache = _load_youtube_cache()
+    cache[cache_key] = {
+        "created_at": time.time(),
+        "videos": videos
+    }
+    _save_youtube_cache(cache)
+
+
+def _search_youtube_videos(queries, animal, emotion, require_arabic, relevance_language, region_code):
+    url = "https://www.googleapis.com/youtube/v3/search"
+    candidate_videos = []
+
+    selected_queries = queries.get(emotion, []).copy()
+    random.shuffle(selected_queries)
+
+    for query in selected_queries[:1]:
+        params = {
+            "part": "snippet",
+            "q": query,
+            "type": "video",
+            "videoEmbeddable": "true",
+            "videoDuration": "medium",
+            "maxResults": 25,
+            "relevanceLanguage": relevance_language,
+            "regionCode": region_code,
+            "safeSearch": "strict",
+            "key": YOUTUBE_API_KEY
+        }
+
+        try:
+            response = requests.get(url, params=params, timeout=8)
+            response.raise_for_status()
+        except requests.RequestException:
+            continue
+
+        data = response.json()
+        items = data.get("items", [])
+
+        for item in items:
+            if _is_relevant_youtube_item(item, animal, emotion, require_arabic):
+                candidate_videos.append(_build_youtube_video(item))
+
+        if candidate_videos:
+            break
+
+    return candidate_videos
+
+
 def get_random_arabic_youtube_video(emotion, animal):
+
+    if not YOUTUBE_API_KEY:
+        return None
 
     if animal == "dog":
         queries = dog_youtube_queries_ar
+        fallback_queries = dog_youtube_queries_en
 
     elif animal == "cat":
         queries = cat_youtube_queries_ar
+        fallback_queries = cat_youtube_queries_en
 
     else:
         return None
 
-    query = random.choice(
-        queries.get(emotion, ["الحيوانات"])
+    cache_key = f"{animal}:{emotion}:youtube_recommendations"
+    cached_videos = _get_cached_youtube_videos(cache_key)
+
+    if cached_videos:
+        return random.choice(cached_videos)
+
+    arabic_videos = _search_youtube_videos(
+        queries,
+        animal,
+        emotion,
+        require_arabic=True,
+        relevance_language="ar",
+        region_code="SA"
     )
 
-    url = "https://www.googleapis.com/youtube/v3/search"
+    if arabic_videos:
+        _set_cached_youtube_videos(cache_key, arabic_videos)
+        return random.choice(arabic_videos)
 
-    params = {
-        "part": "snippet",
-        "q": query,
-        "type": "video",
-        "videoEmbeddable": "true",
-        "maxResults": 15,
-        "relevanceLanguage": "ar",
-        "regionCode": "SA",
-        "safeSearch": "strict",
-        "key": YOUTUBE_API_KEY
-    }
+    english_videos = _search_youtube_videos(
+        fallback_queries,
+        animal,
+        emotion,
+        require_arabic=False,
+        relevance_language="en",
+        region_code="US"
+    )
 
-    response = requests.get(url, params=params)
+    if english_videos:
+        _set_cached_youtube_videos(cache_key, english_videos)
+        return random.choice(english_videos)
 
-    data = response.json()
-
-    if "items" not in data:
-        return None
-
-    random_video = random.choice(data["items"])
-
-    video_id = random_video["id"]["videoId"]
+    fallback_videos = youtube_fallback_videos.get(animal, {}).get(emotion, [])
+    if fallback_videos:
+        return random.choice(fallback_videos)
 
     return {
-        "title": random_video["snippet"]["title"],
-        "channel": random_video["snippet"]["channelTitle"],
-        "url": f"https://www.youtube.com/watch?v={video_id}",
-        "thumbnail": random_video["snippet"]["thumbnails"]["medium"]["url"]
+        "title": "فيديو تعليمي عن رعاية الحيوانات الأليفة",
+        "channel": "YouTube",
+        "url": "https://www.youtube.com/results?search_query=pet+care+animal+behavior",
+        "thumbnail": "https://i.ytimg.com/vi/Grv1Vq2_-H4/mqdefault.jpg"
     }
 
 # =========================================
@@ -460,5 +798,6 @@ async def analyze_image(
     return {
         "error": "animal must be dog or cat"
     }
+    
     
 
