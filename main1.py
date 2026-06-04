@@ -127,13 +127,13 @@ def apply_cat_behavior_rules(prediction, class_labels):
         for i, cls in enumerate(class_labels):
 
             if cls == "angry":
-                adjusted[i] *= 0.50
+                adjusted[i] *= 0.95
 
             elif cls == "relaxed":
-                adjusted[i] *= 0.90
+                adjusted[i] *= 1.00
 
             elif cls == "sad":
-                adjusted[i] *= 1.40
+                adjusted[i] *= 1.05
 
     adjusted = adjusted / adjusted.sum()
 
