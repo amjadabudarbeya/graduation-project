@@ -102,9 +102,9 @@ dog_class_labels = [
 ]
 
 cat_class_labels = [
+    "sad",
     "angry",
-    "relaxed",
-    "sad"
+    "relaxed"
 ]
 
 # =========================================
