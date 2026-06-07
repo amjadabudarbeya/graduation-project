@@ -102,9 +102,9 @@ dog_class_labels = [
 ]
 
 cat_class_labels = [
+    "sad",
     "angry",
-    "relaxed",
-    "sad"
+    "relaxed"
 ]
 
 # =========================================
@@ -120,22 +120,25 @@ def apply_cat_behavior_rules(prediction, class_labels):
         for i in range(len(class_labels))
     }
 
-    angry = probs.get("angry", 0)
+    top_prob = max(probs.values())
 
-    if angry < 0.70:
+    if top_prob >= 0.80:
+        adjusted = prediction
+
+    else:
 
         for i, cls in enumerate(class_labels):
 
             if cls == "angry":
-                adjusted[i] *= 0.50
+                adjusted[i] *= 1.00
 
             elif cls == "relaxed":
-                adjusted[i] *= 0.90
+                adjusted[i] *= 0.95
 
             elif cls == "sad":
-                adjusted[i] *= 1.40
+                adjusted[i] *= 1.05
 
-    adjusted = adjusted / adjusted.sum()
+        adjusted = adjusted / adjusted.sum()
 
     pred_index = int(np.argmax(adjusted))
 
